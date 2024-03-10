@@ -8,7 +8,7 @@ def read_label(file, label_dir, camera_to_velodyne=None):
     """Read label file and return object list"""
     file_name = file.split('.png')[0]
     object_list = get_kitti_object_list(os.path.join(label_dir, file_name + '.txt'),
-                                        camera_to_velodyne=camera_to_velodyne)
+        camera_to_velodyne=camera_to_velodyne)
     return object_list
 
 
@@ -95,6 +95,7 @@ def load_radar_points(path):
 
     return targets
 
+
 def load_calib_data(path_total_dataset, name_camera_calib, tf_tree, velodyne_name='lidar_hdl64_s3_roof'):
     """
     :param path_total_dataset: Path to dataset root dir
@@ -102,6 +103,7 @@ def load_calib_data(path_total_dataset, name_camera_calib, tf_tree, velodyne_nam
     :param tf_tree: TF (transformation) tree containing translations from velodyne to cameras
     :param velodyne_name: Define lidar sensor: lidar_hdl_s3_roof or lidar_vlp32_roof
     :return:
+    todo :RADAR cannot use
     """
 
     assert velodyne_name in ['lidar_hdl64_s3_roof', 'lidar_vlp32_roof'], 'wrong frame id in tf_tree for velodyne_name'
@@ -131,16 +133,16 @@ def load_calib_data(path_total_dataset, name_camera_calib, tf_tree, velodyne_nam
                 T_cam = item['transform']
             elif item['child_frame_id'] == velodyne_name:
                 T_velodyne = item['transform']
-            elif item['child_frame_id'] == 'radar':
-                T_radar = item['transform']
+            # elif item['child_frame_id'] == 'radar':
+            #     T_radar = item['transform']
 
     # Use pyquaternion to setup rotation matrices properly
     R_c_quaternion = Quaternion(w=T_cam['rotation']['w'] * 360 / 2 / np.pi, x=T_cam['rotation']['x'] * 360 / 2 / np.pi,
-                                y=T_cam['rotation']['y'] * 360 / 2 / np.pi, z=T_cam['rotation']['z'] * 360 / 2 / np.pi)
+        y=T_cam['rotation']['y'] * 360 / 2 / np.pi, z=T_cam['rotation']['z'] * 360 / 2 / np.pi)
     R_v_quaternion = Quaternion(w=T_velodyne['rotation']['w'] * 360 / 2 / np.pi,
-                                x=T_velodyne['rotation']['x'] * 360 / 2 / np.pi,
-                                y=T_velodyne['rotation']['y'] * 360 / 2 / np.pi,
-                                z=T_velodyne['rotation']['z'] * 360 / 2 / np.pi)
+        x=T_velodyne['rotation']['x'] * 360 / 2 / np.pi,
+        y=T_velodyne['rotation']['y'] * 360 / 2 / np.pi,
+        z=T_velodyne['rotation']['z'] * 360 / 2 / np.pi)
 
     # Setup quaternion values as 3x3 orthogonal rotation matrices
     R_c_matrix = R_c_quaternion.rotation_matrix
@@ -150,7 +152,7 @@ def load_calib_data(path_total_dataset, name_camera_calib, tf_tree, velodyne_nam
     Tr_cam = np.asarray([T_cam['translation']['x'], T_cam['translation']['y'], T_cam['translation']['z']])
     Tr_velodyne = np.asarray(
         [T_velodyne['translation']['x'], T_velodyne['translation']['y'], T_velodyne['translation']['z']])
-    Tr_radar = np.asarray([T_radar['translation']['x'], T_radar['translation']['y'], T_radar['translation']['z']])
+    # Tr_radar = np.asarray([T_radar['translation']['x'], T_radar['translation']['y'], T_radar['translation']['z']])
 
     # Setup Translation Matrix camera to lidar -> ROS spans transformation from its children to its parents
     # Therefore one inversion step is needed for zero_to_camera -> <parent_child>
@@ -165,13 +167,13 @@ def load_calib_data(path_total_dataset, name_camera_calib, tf_tree, velodyne_nam
     zero_to_velodyne = np.vstack((zero_to_velodyne, np.array([0, 0, 0, 1])))
 
     zero_to_radar = zero_to_velodyne.copy()
-    zero_to_radar[0:3, 3] = Tr_radar
+    # zero_to_radar[0:3, 3] = Tr_radar
 
     # Calculate total extrinsic transformation to camera
     velodyne_to_camera = np.matmul(np.linalg.inv(zero_to_camera), zero_to_velodyne)
     camera_to_velodyne = np.matmul(np.linalg.inv(zero_to_velodyne), zero_to_camera)
-    radar_to_camera = np.matmul(np.linalg.inv(zero_to_camera), zero_to_radar)
-
+    # radar_to_camera = np.matmul(np.linalg.inv(zero_to_camera), zero_to_radar)
+    radar_to_camera = None
     # Read projection matrix P and camera rectification matrix R
     P = np.reshape(data_camera['P'], [3, 4])
 

@@ -1,10 +1,12 @@
 import numpy as np
 import cv2
 import scipy.spatial
-from sklearn.linear_model import RANSACRegressor
 
 
-def project_pointcloud(lidar, vtc, velodyne_to_camera, image_shape, init=None, draw_big_circle=False):
+# from sklearn.linear_model import RANSACRegressor
+
+
+def project_pointcloud(lidar, vtc, velodyne_to_camera, image_shape, init=None,):
     def py_func_project_3D_to_2D(points_3D, P):
         # Project on image
         points_2D = np.matmul(P, np.vstack((points_3D, np.ones([1, np.shape(points_3D)[1]]))))
@@ -23,43 +25,44 @@ def project_pointcloud(lidar, vtc, velodyne_to_camera, image_shape, init=None, d
         valid_points = np.logical_and(within_image_boarder_width, within_image_boarder_height)
         coordinates = np.where(valid_points)[0]
 
-        values = lidar_points[:, coordinates]
+        values = lidar_points[:, coordinates]  # yzi
         if init is None:
             image = -120.0 * np.ones((img_width, img_height, 3))
         else:
-            print(init.shape)
             image = init.transpose((1, 0, 2))
 
         img_coordinates = lidar_points_2D[coordinates, :].astype(dtype=np.int32)
+        kd_tree = scipy.spatial.KDTree(img_coordinates)
+        pairs = kd_tree.query_pairs(10)
+        # close_points = np.array(list(pairs))
+        keep = filter_closest_points(pairs, coordinates, values)
+        img_coordinates = img_coordinates[keep]
+        values = values[:, keep]
+        # Slow elementwise circle drawing through opencv
+        len = img_coordinates.shape[0]
 
-        if not draw_big_circle:
-            image[img_coordinates[:, 0], img_coordinates[:, 1], :] = values.transpose()
-        else:
-            # Slow elementwise circle drawing through opencv
-            len = img_coordinates.shape[0]
+        image = image.transpose([1, 0, 2]).squeeze().copy()
+        import matplotlib as mpl
+        import matplotlib.cm as cm
+        norm = mpl.colors.Normalize(vmin=0, vmax=80)
+        cmap = cm.jet
+        m = cm.ScalarMappable(norm, cmap)
+        depth_map = np.zeros((img_width, img_height))
+        depth_map[img_coordinates[:, 0], img_coordinates[:, 1]] = values.transpose()[:, 1]
+        depth_map_color = values.transpose()[:, 1]
+        depth_map_color = m.to_rgba(depth_map_color)
 
-            image = image.transpose([1, 0, 2]).squeeze().copy()
-            import matplotlib as mpl
-            import matplotlib.cm as cm
-            norm = mpl.colors.Normalize(vmin=0, vmax=80)
-            cmap = cm.jet
-            m = cm.ScalarMappable(norm, cmap)
+        depth_map_color = (255 * depth_map_color).astype(dtype=np.uint8)
+        for idx in range(len):
+            x, y = img_coordinates[idx, :]
+            value = depth_map_color[idx]  # color here
+            # print value
+            tupel_value = (int(value[0]), int(value[1]), int(value[2]))
+            # print tupel_value
+            cv2.circle(image, (x, y), 3, tupel_value, -1)
 
-            depth_map_color = values.transpose()[:, 1]
-            depth_map_color = m.to_rgba(depth_map_color)
 
-            depth_map_color = (255 * depth_map_color).astype(dtype=np.uint8)
-            for idx in range(len):
-                x, y = img_coordinates[idx, :]
-                value = depth_map_color[idx]
-                # print value
-                tupel_value = (int(value[0]), int(value[1]), int(value[2]))
-                # print tupel_value
-                cv2.circle(image, (x, y), 3, tupel_value, -1)
-
-            return image
-
-        return image.transpose([1, 0, 2]).squeeze()
+        return image, depth_map
 
     def py_func_lidar_projection(lidar_points_3D, vtc, velodyne_to_camera, shape, init=None):  # input):
 
@@ -81,7 +84,7 @@ def project_pointcloud(lidar, vtc, velodyne_to_camera, image_shape, init=None, d
         velodyne_to_camera2[0:4, 0:4] = velodyne_to_camera
         velodyne_to_camera2[4, 4] = 1
 
-        lidar_points_2D = py_func_project_3D_to_2D(lidar_points_3D.transpose()[:][0:3], vtc)
+        lidar_points_2D = py_func_project_3D_to_2D(lidar_points_3D.transpose()[:][0:3], vtc)  # velodyne to camera,only do x',y'= x/z,y/z
 
         pts_3D = np.matmul(velodyne_to_camera2, lidar_points_3D2.transpose())
         # detelete placeholder 1 axis
@@ -90,7 +93,22 @@ def project_pointcloud(lidar, vtc, velodyne_to_camera, image_shape, init=None, d
         pts_3D_yzi = pts_3D[1:, :]
 
         return py_func_create_lidar_img(lidar_points_2D, pts_3D_yzi, img_width=img_width,
-                                        img_height=img_height, init=init)
+            img_height=img_height, init=init)
+
+    def filter_closest_points(pairs, coordinates, values):
+        print('near', len(pairs))
+        keep = np.full(coordinates.shape, True, dtype=bool)
+
+        for i, j in pairs:
+            depth_i = values[1, i]
+            depth_j = values[1, j]
+
+            if depth_i < depth_j:
+                keep[j] = False
+            else:
+                keep[i] = False
+
+        return keep
 
     return py_func_lidar_projection(lidar, vtc, velodyne_to_camera, image_shape, init=init)
 
@@ -98,7 +116,7 @@ def project_pointcloud(lidar, vtc, velodyne_to_camera, image_shape, init=None, d
 def find_missing_points(last, strongest):
     last_set = set([tuple(x) for x in last])
     strong_set = set([tuple(x) for x in strongest])
-    remaining_last = np.array([x for x in last_set - strong_set])
+    remaining_last = np.array([x for x in last_set - strong_set])  # last_set ,but not strong_set
     remaining_strong = np.array([x for x in strong_set - last_set])
 
     return remaining_last, remaining_strong

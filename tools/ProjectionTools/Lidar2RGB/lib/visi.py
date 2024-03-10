@@ -1,10 +1,11 @@
 import matplotlib as mpl
 import matplotlib.pyplot as plt
 import matplotlib.cm as cm
-from tools.ProjectionTools.Lidar2RGB.lib.utils import project_pointcloud
-from tools.ProjectionTools.Lidar2RGB.lib.utils import transform_coordinates
+from util import project_pointcloud
+from util import transform_coordinates
 import numpy as np
 from tools.CreateTFRecords.generic_tf_tools.resize import resize
+from filter_pointcloud_1 import do_filter
 
 
 def plot_spherical_scatter_plot(pointlcoud, pattern='hot', plot_show=True, title=None):
@@ -24,7 +25,7 @@ def plot_spherical_scatter_plot(pointlcoud, pattern='hot', plot_show=True, title
     depth_map_color = m.to_rgba(transformed_pointcloud[:, 0])
 
     plt.scatter(transformed_pointcloud[:, 1],
-                transformed_pointcloud[:, 2], c=depth_map_color, s=1)
+        transformed_pointcloud[:, 2], c=depth_map_color, s=1)
 
     if title is not None:
         plt.title(title)
@@ -33,20 +34,16 @@ def plot_spherical_scatter_plot(pointlcoud, pattern='hot', plot_show=True, title
         plt.show()
 
 
-def plot_image_projection(pointcloud, vtc, velodyne_to_camera, frame='default', title=None):
-
+def plot_image_projection(rgb, pointcloud, vtc, velodyne_to_camera, frame='default', name=None):
     # Resize image to other crop
     r = resize(frame)
+    pointcloud = do_filter(pointcloud)
 
-    lidar_image = project_pointcloud(pointcloud, np.matmul(r.get_image_scaling(), vtc), velodyne_to_camera,
-                                     list(r.dsize)[::-1] + [3], init=np.zeros(list(r.dsize)[::-1] + [3]),
-                                     draw_big_circle=True)
-
-    if title is not None:
-        plt.title(title)
-
-    plt.imshow(lidar_image)
-    plt.show()
+    lidar_image, depth = project_pointcloud(pointcloud, np.matmul(r.get_image_scaling(), vtc), velodyne_to_camera, list(r.dsize)[::-1] + [3], init=rgb)
+    # set size
+    plt.figure(figsize=(20, 20))
+    plt.imsave('/opt/data/private/wjy/backup/weather_datasets/dense/SeeingThroughFog/images/{}'.format(name + ".png"), lidar_image)
+    return depth
 
 
 def plot_3d_scatter(pointlcoud, plot_show=True):
